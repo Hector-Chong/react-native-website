@@ -8,39 +8,36 @@ import NewArchitectureWarning from '../\_markdown-new-architecture-warning.mdx';
 
 <NewArchitectureWarning/>
 
-If you've worked with React Native, you may be familiar with the concept of [Native Modules](../native-modules-intro.md), which allow JavaScript and platform-native code to communicate over the React Native "bridge", which handles cross-platform serialization via JSON.
+如果您使用过 React Native，您可能了解过 [Native Modules](../native-modules-intro.md) 这个概念。它可以通过 React Native 的「Bridge」帮助 JavaScript 和原生代码进行交互，并使用跨平台的数据格式 JSON 进行通讯。
 
-TurboModules are the next iteration on Native Modules that provide a few extra [benefits](./why):
+Turbo Native Modules 与 Native Modules 相比，存在以下[优势](./why)：
 
-- Strongly typed interfaces that are consistent across platforms
-- The ability to write your code in C++, either exclusively or integrated with another native platform language, reducing the need to duplicate implementations across platforms
-- Lazy loading of modules, allowing for faster app startup
-- The use of JSI, a JavaScript interface for native code, which allows for more efficient communication between native and JavaScript code than the bridge
+- 各个平台的强类型接口声明是一致的；
+- 您可以使用 C++ 编写模块或迁移其它平台的原生代码，以此避免在跨平台重复实现模块；
+- 模块支持懒加载，可以加快 App 启动速度；
+- 通过替换 Bridge 为 JSI（使用原生代码编写的 JavaScript 接口），提升 JavaScript 与原生代码的通讯效率。
 
-This guide will show you how to create a basic TurboModule.
+本文档将指导您如何创建一个兼容 React Native 0.70.0 的基础 Turbo Native Module 。
 
-:::caution
-TurboModules only work with the **New Architecture** enabled.
-To migrate to the **New Architecture**, follow the [Migration guide](../new-architecture-intro)
+:::caution 注意
+使用 Turbo Native Module 前必须**开启新架构**。若要了解如何将代码迁移到新架构，您可参考此[迁移指南](../new-architecture-intro)。
 :::
 
-## How to Create a TurboModule
+## 如何创建 TurboModule
 
-To create a TurboModule, we need to:
+创建一个 Turbo Native Module 分为以下步骤：
 
-1. Define the JavaScript specification.
-2. Configure the module so that Codegen can generate the scaffolding.
-3. Write the native code to finish implementing the module.
+1.  声明 JavaScript 接口类型
+2.  配置模块以支持 Codegen 自动生成脚手架代码
+3.  编写原生代码完成模块实现
 
-## 1. Folder Setup
+## 1. 目录配置
 
-In order to keep the module decoupled from the app, it's a good idea to define the module separately from the app, and then add it as a dependency to your app later. This is also what you'll do for writing TurboModules that can be released as open-source libraries later.
+为了使模块与 App 保持解耦，有个不错的方案是将模块从 App 抽离出来，并添加为 App 的一个依赖。如果您打算开发一个开源的 Turbo Native Module，您同样也需要这么做。
 
-Next to your application, create a folder called `RTNCalculator`. **RTN** stands for "**R**eac**t** **N**ative", and is a recommended prefix for React Native modules.
+打开您的 App，创建一个名为 `RTNCalculator` 的目录。**RTN** 的意思是「**R**eac**t** **N**ative」，同时它也是推荐的 React Native 模块前缀命名。
 
-Within `RTNCalculator`, create three subfolders: `js`, `ios`, and `android`.
-
-The final result should look like this:
+在 `RTNCalculator` 目录中，创建三个子目录：`js`、`ios` 和 `android`。创建后的目录结构是这样的：
 
 ```sh
 TurboModulesGuide
@@ -51,14 +48,14 @@ TurboModulesGuide
     └── js
 ```
 
-## 2. JavaScript Specification
+## 2. 声明 JavaScript 接口
 
-The **New Architecture** requires interfaces specified in a typed dialect of JavaScript (either [Flow](https://flow.org/) or [TypeScript](https://www.typescriptlang.org/)). **Codegen** will use these specifications to generate code in strongly-typed languages, including C++, Objective-C++, and Java.
+**新架构**要求必须使用强类型风格语言声明 JavaScript 接口（[Flow](https://flow.org/) 或 [TypeScript](https://www.typescriptlang.org/) 皆可）。`Codegen` 会根据这些接口声明来生成强类型的语言，其中包括 C++、Objective-C 和 Java。
 
-There are two requirements the file containing this specification must meet:
+对于声明类型的代码文件必须满足以下两点要求：
 
-1. The file **must** be named `Native<MODULE_NAME>`, with a `.js` or `.jsx` extension when using Flow, or a `.ts`, or `.tsx` extension when using TypeScript. Codegen will only look for files matching this pattern.
-2. The file must export a `TurboModuleRegistrySpec` object.
+1.  文件必须使用 `Native<MODULE_NAME>` 命名，并在使用 Flow 时，以 `.js` 或 `.jsx` 为后缀名；在使用 Typescript 时，以 `.ts` 或 `.tsx` 为后缀名。Codegen 只会匹配并找到满足这些命名规则的文件
+2.  代码中必须要输出 `TurboModuleRegistrySpec` 对象
 
 <Tabs groupId="turbomodule-specs" defaultValue={constants.defaultJavaScriptSpecLanguages} values={constants.javaScriptSpecLanguages}>
 <TabItem value="flow">
@@ -95,28 +92,28 @@ export default TurboModuleRegistry.get<Spec>(
 </TabItem>
 </Tabs>
 
-At the beginning of the spec files are the imports:
+在代码顶部需导入以下两个声明文件：
 
-- The `TurboModule` type, which defines the base interface for all TurboModules
-- The `TurboModuleRegistry` JavaScript module, which contains functions for loading TurboModules
+-   类型 `TurboModule` ：定义 Turbo Native Module 的基础接口
+-   JS 模块 `TurboModuleRegistry`：包含了用于加载 Turbo Native Module 的函数
 
-The second section of the file contains the interface specification for the TurboModule. In this case, the interface defines the `add` function which takes two numbers and returns a promise that resolves to a number. This interface type **must** be named `Spec` for a TurboModule.
+代码的第二个部分就是针对 Turbo Native Module 的接口声明。在本例中，接口声明了 `add` 函数，它将用于接受两个数字并返回一个包装数字的 Promise。为声明 Turbo Native Module，此接口**必须**命名为 `Spec`。
 
-Finally, we invoke `TurboModuleRegistry.get`, passing the module's name, which will load the TurboModule if it's available.
+最后，调用 `TurboModuleRegistry.get` 并传入模块名，它将在 Turbo Native Module 可用的时候进行加载。
 
-:::caution
-We are writing JavaScript files importing types from libraries, without setting up a proper node module and installing its dependencies. Your IDE will not be able to resolve the import statements and you may see errors and warnings. This is expected and will not cause problems when you add the module to your app.
+:::caution 注意
+当我们在编写 JavaScript 代码时，如果没有配置好对应的模块或依赖安装，就从第三方库导入类型，可能会使的您的 IDE 不能正确载入导入声明，从而显示错误或警告。这种情况是正常的，它不会在您添加模块到 App 的时候出现问题。
 :::
 
-## 3. Module Configuration
+## 3. 模块配置
 
-Next, you need to add some configuration for [**Codegen**](pillars-codegen.md) and auto-linking.
+接下来，您需要为 [**Codegen**](pillars-codegen.md) 和自动链接添加一些配置。
 
-Some of these configuration files are shared between iOS and Android, while the others are platform-specific.
+有一些配置文件在 iOS 和 Android 平台是通用的，而有的仅能在某一平台使用。
 
-### Shared
+### **Shared**
 
-The shared configuration is a `package.json` file that will be used by yarn when installing your module. Create the `package.json` file in the root of the `RTNCalculator` directory.
+shared 是 `package.json` 文件中的一个配置项，它将在 yarn 安装您的模块时被调用，用于在 `RTNCalculator` 的根目录创建 `package.json` 文件。
 
 ```json title="package.json"
 {
@@ -160,22 +157,22 @@ The shared configuration is a `package.json` file that will be used by yarn when
 }
 ```
 
-The upper part of the file contains some descriptive information like the name of the component, its version and its source files. Make sure to update the various placeholders which are wrapped in `<>`: replace all the occurrences of the `<your_github_handle>`, `<Your Name>`, and `<your_email@your_provider.com>` tokens.
+文件上面的内容包含了一些描述性的信息，比如组件名、版本和代码文件。务必记得设置使用 `<>` 包裹的占位符，如替换所有的`<your_github_handle>`、`<Your Name>`、`<your_email@your_provider.com>` 等标记。
 
-Then there are the dependencies for this package. For this guide, you need `react` and `react-native`.
+接下来是 npm 包的依赖。在本指导中，您会用到 `react` 和 `react-native`。
 
-Finally, the **Codegen** configuration is specified by the `codegenConfig` field. It contains an array of libraries, each of which is defined by three other fields:
+最后，将 **Codegen** 的配置声明到 `codegenConfig` 字段。`codegenConfig` 是一个用于存放要生成的第三方库的对象数组，每个对象又包含其它三个字段：
 
-- `name`: The name of the library. By convention, you should add the `Spec` suffix.
-- `type`: The type of module contained by this package. In this case, it is a TurboModule, thus the value to use is `modules`.
-- `jsSrcsDir`: the relative path to access the `js` specification that is parsed by **Codegen**.
-- `android.javaPackageName`: the package to use in the Java files generated by **Codegen**.
+-   `name`：第三方库的名称。按照惯例，名称应以 `Spec` 为结尾
+-   `type`：在这个 npm 包里的模块类型。在本例中，我们开发的是 Turbo Native Module，所以值为 `modules`
+-   `jsSrcsDir`：用于找到 `js` 接口声明文件的相对路径，它将被 **Codegen** 解析
+-   `android.javaPackageName`：由 **Codegen** 生成的 Java 包名
 
-### iOS: Create the `podspec` file
+### iOS：创建 `podspec` 文件
 
-For iOS, you'll need to create a `rtn-calculator.podspec` file which will define the module as a dependency for your app. It will stay in the root of `RTNCalculator`, alongside the `ios` folder.
+针对 iOS 平台，您需要创建一个 `rtn-calculator.podspec` 文件，它的用途是将您的模块定义为 App 里的一个依赖。文件要放在 `RTNCalculator` 根目录，与 `ios` 目录处于同一个位置。
 
-The file will look like this:
+文件内容如下：
 
 ```ruby title="rtn-calculator.podspec"
 require "json"
@@ -215,19 +212,19 @@ Pod::Spec.new do |s|
 end
 ```
 
-The `.podspec` file has to be a sibling of the `package.json` file and its name is the one we set in the `package.json`'s `name` property: `rtn-calculator`.
+这个 `.podspec` 文件需要和 `package.json` 处于同一个目录，并且它的命名应该取自我们在 `package.json` 的 `name` 字段配置的值：`rtn-calculator`。
 
-The first part of the file prepares some variables we will use throughout the rest of it. Then, there is a section that contains some information used to configure the pod, like its name, version, and description. Finally, we have a set of dependencies that are required by the New Architecture.
+文件首部分设置了一些在后续会使用到的变量。后面一部分内容是一些用来配置 pod 的信息，比如命名、版本和功能描述等。其余内容是一些在新架构中必须要配置的依赖。
 
-### Android: `build.gradle`, `AndroidManifest.xml`, a `ReactPackage` class
+### Android: `build.gradle`, `AndroidManifest.xml`, `ReactPackage` 类
 
-To prepare Android to run **Codegen** you have to create three files:
+若要在 Android 平台运行 **Codegen**，您需要创建三个文件：
 
-1. The `build.gradle` with the **Codegen** configuration
-1. The `AndroidManifest.xml` file
-1. A java class that implements the `ReactPackage` interface.
+1.  带有 `Codegen` 配置信息的 `build.gradle` 文件
+1.  `AndroidManifest.xml`
+1.  一个实现 `ReactPackage` 接口的 Java 类
 
-At the end of these steps, the `android` folder should look like this:
+在文件创建完成后，`android` 目录文件结构应该是这样的：
 
 ```title="Android Folder Structure"
 android
@@ -241,9 +238,9 @@ android
                     └── RTNCalculatorPackage.java
 ```
 
-#### The `build.gradle` file
+#### `build.gradle`
 
-First, create a `build.gradle` file in the `android` folder, with the following contents:
+首先，在 `android` 目录创建 `build.gradle` 文件，并配置以下内容：
 
 ```kotlin title="build.gradle"
 buildscript {
@@ -280,9 +277,9 @@ dependencies {
 }
 ```
 
-#### The `AndroidManifest.xml`
+#### `AndroidManifest.xml`
 
-Second, create an `android/src/main` folder. Inside that folder, create a `AndroidManifest.xml` file, with the following code:
+其次，创建 `android/src/main` 目录，然后在这个目录内创建 `AndroidManifest.xml` 文件，并编写以下代码：
 
 ```xml title="AndroidManifest.xml"
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -290,13 +287,13 @@ Second, create an `android/src/main` folder. Inside that folder, create a `Andro
 </manifest>
 ```
 
-This is a small manifest file that defines the package for your module.
+这个 manifest 文件的用途是声明您开发的模块的 Java 包 。
 
-#### The `ReactPackage` class
+#### `ReactPackage` 类
 
-Finally, you need a class that extends the `TurboReactPackage` interface. To run the **Codegen** process, you don't have to completely implement the package class: an empty implementation is enough for the app to pick up the module as a proper React Native dependency and to try and generate the scaffolding code.
+最后，您需要一个继承 `TurboReactPackage` 接口的类。在运行 **Codegen** 前，您不用完整实现这个类。对于 App 而言，一个实际没有实现接口的空类就已经能够被当做一个 React Native 依赖，并且会尝试生成其脚手架代码。
 
-Create an `android/src/main/java/com/rtncalculator` folder and, inside that folder, create a `RTNCalculatorPackage.java` file.
+创建 `android/src/main/java/com/rtncalculator` 目录，在这个目录内创建 `RTNCalculatorPackage.java` 文件
 
 ```java title="RTNCalculatorPackage.java"
 package com.RTNCalculator;
@@ -325,28 +322,28 @@ public class CalculatorPackage extends TurboReactPackage {
 }
 ```
 
-The `ReactPackage` interface is used by React Native to understand what native classes the app has to use for the `ViewManager` and `Native Modules` exported by the library.
+`ReactPackage` 接口的用途是让 React Native 为使用 App 中的 `ViewManager` 和 `Native Modules`，识别出哪些原生类需要在第三方库里导出。
 
-## 4. Native Code
+## 4. 原生代码
 
-For the final step in getting your TurboModule ready to go, you'll need to write some native code to connect the JavaScript side to the native platforms. This process requires two main steps:
+最后一步是让您的 Turbo Native Module 准备运行，您需要编写一些让 JavaScript 与原生平台交互的代码。这包含两个主要步骤：
 
-- Run **Codegen** to see what it generates.
-- Write your native code, implementing the generated interfaces.
+- 运行 **Codegen** 查看生成的代码
+- 编写原生代码，实现 **Codegen** 生成的接口
 
-When developing a React Native app that uses a TurboModule, it is responsibility of the app to actually generate the code using **Codegen**. However, when developing a TurboModule as a library, we need to reference the generated code, and it is therefore useful to see what the app will generate.
+在开发一个使用 Turbo Native Module 的 React Native App 时，将由 App 负责使用 **Codegen** 生成代码。但在开发 TurboModule 第三方库时，我们需要引用 **Codegen** 的生成代码，因此查看生成的代码是很有帮助的。
 
-As first step for both iOS and Android, this guide shows how to execute manually the scripts used by **Codegen** to generate the required code. Further information on **Codegen** can be found [here](pillars-codegen.md)
+首先，为生成 iOS 和 Android 平台的代码，本指导将向您展示如何手动执行由 **Codegen** 生成的脚本，以及生成所需要的平台代码。您可以在[这里](pillars-codegen.md)了解到更多关于 **Codegen** 的内容。
 
-:::caution
-The code generated by **Codegen** in this step should not be committed to the versioning system. React Native apps are able to generate the code when the app is built. This allows an app to ensure that all libraries have code generated for the correct version of React Native.
+:::caution 注意
+**Codegen** 生成的代码不该提交到版本管理系统，React Native 会在 App 构建的时候自动生成代码。这是为了确保在 App 内，所有第三方库都正确使用针对某一 React Native 版本的生成代码。
 :::
 
 ### iOS
 
-#### Generate the code - iOS
+#### iOS 的代码生成
 
-To run Codegen for the iOS platform, we need to open a terminal and run the following command:
+为生成 iOS 平台的代码，您需要在 Terminal 执行以下命令：
 
 ```sh title="Running Codegen for iOS"
 cd MyApp
@@ -357,11 +354,11 @@ node MyApp/node_modules/react-native/scripts/generate-artifacts.js \
   --outputPath RTNCalculator/generated/
 ```
 
-This script first adds the `RTNCalculator` module to the app with `yarn add`. Then, it invokes Codegen via the `generate-artifacts.js` script.
+这脚本首先使用 `yarn add` 将 `RTNCalculator` 模块添加到 App。然后通过 `generate-artifacts.js` 脚本调用 Codegen。
 
-The `--path` option specifies the path to the app, while the `--outputPath` option tells Codegen where to output the generated code.
+`--path` 选项用于声明 App 的路径，`--outputPath` 选项用于声明 Codegen 生成代码的存放路径。
 
-The output of this process is the following folder structure:
+命令执行后将呈现以下目录文件结构：
 
 ```sh
 generated
@@ -390,13 +387,13 @@ generated
                             └── ShadowNodes.h
 ```
 
-The relevant path for the TurboModule interface is `generated/build/generated/ios/RTNCalculatorSpec`.
+Turbo Native Module 接口的路径为 `generated/build/generated/ios/RTNCalculatorSpec`。
 
-See the [Codegen](./pillars-codegen) section for further details on the generated files.
+查看 [Codegen](./pillars-codegen) 章节文档可获得更多文件生成相关细节。
 
-:::note
-When generating the scaffolding code using **Codegen**, iOS does not clean the `build` folder automatically. If you changed a the Spec name, for example, and then run **Codegen** again, the old files will be retained.
-If that happens, remember to remove the `build` folder before running the **Codegen** again.
+:::note 备注
+使用 **Codegen** 生成脚手架代码时，iOS 平台中不会自动清空 `build` 目录。假如您需要修改接口声明文件的命名，并重新执行了 **Codegen**，旧的代码会保留下来。如果发生了这种情况，您需要在重新执行 **Codegen** 之前删除 `build` 目录。
+
 
 ```
 cd MyApp/ios
@@ -405,12 +402,12 @@ rm -rf build
 
 :::
 
-#### Write the Native iOS Code
+#### 编写 iOS 原生代码
 
-Now add the Native code for your TurboModule. Create two files in the `RTNCalculator/ios` folder:
+现在可以开始为您的 Turbo Native Module 编写原生代码了。在 `RTNCalculator/ios` 目录创建两个文件：
 
-1. The `RTNCalculator.h`, a header file for the module.
-2. The `RTNCalculator.mm`, the implementation of the module.
+1.  `RTNCalculator.h`：模块的头文件
+2.  `RTNCalculator.mm`：实现模块的代码
 
 ##### RTNCalculator.h
 
@@ -426,7 +423,7 @@ NS_ASSUME_NONNULL_BEGIN
 NS_ASSUME_NONNULL_END
 ```
 
-This file defines the interface for the `RTNCalculator` module. Here, we can add any native method we may want to invoke on the view. For this guide, we don't need anything, therefore the interface is empty.
+此文件定义了 `RTNCalculator` 接口，我们可以在这里添加可被视图触发的方法。在本指引中，我们什么都不用做，所以这个接口是空的
 
 ##### RTNCalculator.mm
 
@@ -456,23 +453,23 @@ RCT_REMAP_METHOD(add, addA:(NSInteger)a
 @end
 ```
 
-The most important call is to the `RCT_EXPORT_MODULE`, which is required to export the module so that React Native can load the TurboModule.
+调用 `RCT_EXPORT_MODULE` 是至关重要的，它将导出模块使得 React Native 能够加载此 Turbo Native Module。
 
-Then the `RCT_REMAP_METHOD` macro is used to expose the `add` method.
+然后使用宏定义 `RCT_REMAP_METHOD` 暴露 `add` 方法。
 
-Finally, the `getTurboModule` method gets an instance of the TurboModule so that the JavaScript side can invoke its methods. The function is defined in (and requested by) the `RTNCalculatorSpec.h` file that was generated earlier by Codegen.
+最后，`getTurboModule` 方法将获取 Turbo Native Module 实例，以此使 JavaScript 能够执行模块的方法。这个方法在 `RTNCalculatorSpec.h` 中声明，并且是之前由 Codegen 生成的代码。
 
 :::info
-There are other macros that can be used to export modules and methods. You view the code that specifies them [here](https://github.com/facebook/react-native/blob/main/React/Base/RCTBridgeModule.h).
+你可以查看 `[RTNCalculatorSpec.h](<https://github.com/facebook/react-native/blob/main/React/Base/RCTBridgeModule.h>)` 代码，了解更多用于导出模块及其方法的宏定义。
 :::
 
 ### Android
 
-Android follows similar steps to iOS. We have to generate the code for Android, and then we have to write some native code to make it work.
+Android 的操作与 iOS 类似，我们需要先生成针对 Android 平台的代码，然后再编写 TurboModule 的原生代码。
 
-#### Generate the Code - Android
+#### Android 的代码生成
 
-To generate the code for Android, we need to manually invoke Codegen. This is done similarly to what we did for iOS: first, we need to add the package to the app and then we need to invoke a script.
+我们需要手动调用 Codegen 来生成 Android 平台代码。这和我们在 iOS 平台的操作相似：首先向 App 添加 Java 包，然后调用脚本生成代码。
 
 ```sh title="Running Codegen for Android"
 cd MyApp
@@ -481,13 +478,13 @@ cd android
 ./gradlew generateCodegenArtifactsFromSchema
 ```
 
-This script first adds the package to the app, in the same way iOS does. Then, after moving to the `android` folder, it invokes a Gradle task to create the generated code.
+这个脚本会向 App 添加 Java 包，然后打开 `android` 目录创建一个 Gradle 任务来生成代码。
 
 :::note
-To run **Codegen**, you need to enable the **New Architecture** in the Android app. This can be done by opening the `gradle.properties` files and by switching the `newArchEnabled` property from `false` to `true`.
+在运行 **Codegen** 之前，你需要在 Android 中的 App 启动新架构。你可以通过修改 `gradle.properties` 文件中的 `newArchEnabled` 属性，将 `false` 改为 `true`。
 :::
 
-The generated code is stored in the `MyApp/node_modules/rtn-calculator/android/build/generated/source/codegen` folder and it has this structure:
+生成后的代码保存在 `MyApp/node_modules/rtn-calculator/android/build/generated/source/codegen` 目录，并呈以下结构：
 
 ```title="Android generated code"
 codegen
@@ -513,14 +510,14 @@ codegen
 └── schema.json
 ```
 
-#### Write the Native Android Code
+#### 编写 Android 原生代码
 
-The native code for the Android side of a TurboModule requires:
+Android 平台上 Turbo Native Module 的原生代码需执行如下步骤：
 
-1. to create a `RTNCalculatorModule.java` that implements the module.
-2. to update the `RTNCalculatorPackage.java` created in the previous step.
+1.  创建用于实现模块的 `RTNCalculatorModule.java`
+2.  修改之前生成的 `RTNCalculatorPackage.java`
 
-The final structure within the Android library should look like this:
+您的 Android 第三方库目录文件结构应为如下：
 
 ```title="Android Folder Structure"
 android
@@ -535,7 +532,7 @@ android
                     └── CalculatorPackage.java
 ```
 
-##### Creating the `CalculatorModule.java`
+##### 创建 `CalculatorModule.java`
 
 ```java title="CalculatorModule.java"
 package com.RTNCalculator;
@@ -571,9 +568,9 @@ public class CalculatorModule extends NativeCalculatorSpec {
 }
 ```
 
-This class implements the module itself, which extends the `NativeCalculatorSpec` that was generated from the `NativeCalculator` JavaScript specification file.
+这个类实现了模块的功能，它继承了 `NativeCalculatorSpec` 类，而这个类是之前从 JavaScript 接口声明文件 `NativeCalculator` 自动生成的。
 
-##### Updating the `CalculatorPackage.java`
+##### 修改 `CalculatorPackage.java`
 
 ```diff title="CalculatorPackage.java"
 package com.RTNCalculator;
@@ -625,50 +622,50 @@ public class CalculatorPackage extends TurboReactPackage {
 }
 ```
 
-This is the last piece of Native Code for Android. It defines the `TurboReactPackage` object that will be used by the app to load the module.
+这就是 Android 平台原生代码的最后一部分，它定义了 `TurboReactPackage` 对象，这个对象将用于 App 的模块加载。
 
-## 5. Adding the TurboModule to your App
+## 5. 将 Turbo Native Module 添加到 App
 
-Now you can install and use the TurboModule in your app.
+现在你可以将 Turbo Native Module 添加到您的 App 中了。
 
 ### Shared
 
-First of all, we need to add the NPM package which contains the Component to the app. This can be done with the following command:
+首先，我们需要将包含模块的 NPM 包添加到您的 App。您可以使用以下命令执行此操作：
 
 ```sh
 cd MyApp
 yarn add ../RTNCalculator
 ```
 
-This command will add the `RTNCalculator` module to the `node_modules` of your app.
+此命令会将 `RTNCalculator` 模块添加到 App 内的 `node_modules` 目录。
 
 ### iOS
 
-Then, you need to install the new dependencies in your iOS project. To do so, run these commands:
+接下来，您需要添加新的依赖到您的 iOS 工程，您也可以通过以下命令执行此操作：
 
 ```sh
 cd ios
 RCT_NEW_ARCH_ENABLED=1 bundle exec pod install
 ```
 
-This command will look for all the dependencies of the project and it will install the iOS ones. The `RCT_NEW_ARCH_ENABLED=1` instruct **Cocoapods** that it has to run some additional operations to run **Codegen**.
+此命令会查询 iOS 工程里的所有的依赖，并对它们进行安装。`RCT_NEW_ARCH_ENABLED=1` 的意思是 **Cocoapods** 在执行 **Codegen** 前需要一些额外的操作。
 
-:::note
-You may have to run `bundle install` once before you can use `RCT_NEW_ARCH_ENABLED=1 bundle exec pod install`. You won't need to run `bundle install` anymore, unless you need to change the Ruby dependencies.
+:::note 备注
+在使用 `RCT_NEW_ARCH_ENABLED=1` 之前，您可能需要先执行一遍 `bundle install`。后续您不必再次运行 `bundle install`，除非您修改了 Ruby 的依赖。
 :::
 
 ### Android
 
-Android configuration requires to enable the **New Architecture**:
+在配置 Android 之前，您需要先开启**新架构**：
 
-1. Open the `android/gradle.properties` file
-2. Scroll down to the end of the file and switch the `newArchEnabled` property from `false` to `true`.
+1.  打开 `android/gradle.properties` ；
+2.  滑到文件底部，将 `newArchEnabled` 的值从 `false` 修改为 `true`。
 
 ### JavaScript
 
-Now you can use your TurboModule calculator in your app!
+现在你就可以在您的 App 中使用 Turbo Native Module 了！
 
-Here's an example App.js file using the `add` method:
+以下是一个在 App.js 中调用 `add` 方法的例子：
 
 ```js title="App.js"
 /**
@@ -710,4 +707,4 @@ const App: () => Node = () => {
 export default App;
 ```
 
-Try this out to see your TurboModule in action!
+快去尝试一下，看看 Turbo Native Module 的运行效果吧！
