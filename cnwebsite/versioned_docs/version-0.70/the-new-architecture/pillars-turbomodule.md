@@ -662,7 +662,7 @@ RCT_NEW_ARCH_ENABLED=1 bundle exec pod install
 
 ### JavaScript
 
-现在您就可以在您的 App 中使用 Turbo Native Module 了！
+现在您可以在您的 App 中使用 Turbo Native Module 了！
 
 以下是一个在 App.js 中调用 `add` 方法的例子：
 
